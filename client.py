@@ -2,28 +2,39 @@ import socket
 import threading
 import sys
 
+HOST = "127.0.0.1"
+PORT = 5000
+
 client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+running = True
+
 
 try:
-    client_socket.connect(("127.0.0.1", 5000))
+    client_socket.connect((HOST, PORT))
 except ConnectionRefusedError:
     print("Не удалось подключиться к серверу")
     sys.exit()
 
 
 def receive_messages():
-    """Поток для приёма сообщений от сервера."""
+    global running
+
     try:
-        while True:
+        while running:
             data = client_socket.recv(1024)
+
             if not data:
-                print("Сервер отключился")
+                print("\nСервер отключился")
                 break
 
             print(data.decode("utf-8"), end="")
+
     except:
-        print("Соединение с сервером потеряно")
+        if running:
+            print("\nСоединение с сервером потеряно")
+
     finally:
+        running = False
         try:
             client_socket.close()
         except:
@@ -31,17 +42,23 @@ def receive_messages():
 
 
 def send_messages():
-    """Поток для отправки сообщений на сервер."""
+    global running
+
     try:
-        while True:
+        while running:
             message = input()
+
             if message.lower() == "exit":
+                running = False
                 break
 
-            client_socket.send(message.encode("utf-8"))
+            client_socket.sendall(message.encode("utf-8"))
+
     except:
         pass
+
     finally:
+        running = False
         try:
             client_socket.close()
         except:
@@ -55,4 +72,5 @@ recv_thread.start()
 send_thread.start()
 
 send_thread.join()
+
 print("Клиент завершил работу")

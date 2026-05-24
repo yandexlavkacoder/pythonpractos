@@ -915,89 +915,102 @@ import threading
 # a=input("вы хотите выйти?")
 # когда создаётся поток-демон, поток не заканчивается, пока не закроешь самостоятельно клавишой "Enter"
 # логирование - действие пользователей, которые записываются в логи. можно использовать потоки-демоны
-import threading
+
+
+
+
 import socket
+import threading
 
+HOST = "127.0.0.1"
+PORT = 5000
+
+clients = []
 lock = threading.Lock()
-clients = []   # список сокетов клиентов
-
+        
 
 def broadcast(message, sender_socket=None):
-    """Отправка сообщения всем клиентам, кроме отправителя."""
     with lock:
-        disconnected_clients = []
+        clients_copy = clients.copy()
 
-        for client in clients:
-            if client != sender_socket:
-                try:
-                    client.send(message.encode("utf-8"))
-                except:
-                    disconnected_clients.append(client)
-
-        for client in disconnected_clients:
-            if client in clients:
-                clients.remove(client)
-            client.close()
+    for client in clients_copy:
+        if client != sender_socket:
+            try:
+                client.sendall(message.encode("utf-8"))
+            except:
+                remove_client(client)
 
 
-def server_thr(client_socket, client_address):
+def remove_client(client_socket):
+    with lock:
+        if client_socket in clients:
+            clients.remove(client_socket)
+
+    try:
+        client_socket.close()
+    except:
+        pass
+
+
+def handle_client(client_socket, client_address):
     print(f"Клиент {client_address} подключён")
 
-    # Приветствие новому клиенту
     try:
-        client_socket.send("Добро пожаловать в чат!\n".encode("utf-8"))
-    except:
-        return
+        client_socket.sendall("Добро пожаловать в чат!\n".encode("utf-8"))
+        broadcast(f"Пользователь {client_address} присоединился к чату\n", client_socket)
 
-    # Сообщение остальным о новом участнике
-    broadcast(f"Пользователь {client_address} присоединился к чату\n", client_socket)
-
-    try:
         while True:
             data = client_socket.recv(1024)
+
             if not data:
                 break
 
             message = data.decode("utf-8").strip()
-            print(f"{client_address} -> {message}")
 
-            # Рассылка сообщения всем остальным
-            broadcast(f"{client_address}: {message}\n", client_socket)
+            if message:
+                print(f"{client_address}: {message}")
+                broadcast(f"{client_address}: {message}\n", client_socket)
 
     except ConnectionResetError:
-        print(f"Клиент {client_address} отключился аварийно")
+        print(f"Клиент {client_address} аварийно отключился")
 
     finally:
-        with lock:
-            if client_socket in clients:
-                clients.remove(client_socket)
-
-        client_socket.close()
+        remove_client(client_socket)
         print(f"Клиент {client_address} отключён")
-
-        # Сообщаем остальным, что пользователь вышел
-        broadcast(f"Пользователь {client_address} покинул чат\n")
+        broadcast(f"Пользователь {client_address} покинул чат\n", client_socket)
 
 
-socket_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-socket_server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-socket_server.bind(("127.0.0.1", 5000))
-socket_server.listen()
+server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+server_socket.bind((HOST, PORT))
+server_socket.listen()
 
-print("Сервер запущен и ждёт клиентов...")
+print(f"Сервер запущен на {HOST}:{PORT}")
 
-while True:
-    client_socket, client_address = socket_server.accept()
+try:
+    while True:
+        client_socket, client_address = server_socket.accept()
 
+        with lock:
+            clients.append(client_socket)
+
+        thread = threading.Thread(
+            target=handle_client,
+            args=(client_socket, client_address),
+            daemon=True
+        )
+        thread.start()
+
+except KeyboardInterrupt:
+    print("\nСервер остановлен")
+
+finally:    
     with lock:
-        clients.append(client_socket)
+        for client in clients:
+            client.close()
+        clients.clear()
 
-    th = threading.Thread(
-        target=server_thr,
-        args=(client_socket, client_address),
-        daemon=True
-    )
-    th.start()
+    server_socket.close()
 
 # несколько клиентов, один заходит на сервер и отправляет сообщение клиентам которые ждут вход на сервер. на сервере создаём переменную которая будет принимать сообщение от клиента
 
