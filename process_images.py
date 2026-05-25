@@ -6,18 +6,35 @@ from PIL import Image
 
 INPUT_DIR = "images"
 OUTPUT_DIR = "processed"
-SIZE = (800, 600)
 
 
-def create_test_images(count=20):
+def clear_folder(folder):
+    if os.path.exists(folder):
+        for file in os.listdir(folder):
+            file_path = os.path.join(folder, file)
+
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+
+
+def create_test_images(count=10):
     os.makedirs(INPUT_DIR, exist_ok=True)
 
+    # Удаляем старые изображения
+    clear_folder(INPUT_DIR)
+
     for i in range(count):
+
         img = Image.new(
             "RGB",
             (1200, 900),
-            color=(i * 30 % 255, i * 60 % 255, i * 90 % 255)
+            color=(
+                40 + i * 20,
+                80 + i * 15,
+                120 + i * 10
+            )
         )
+
         img.save(os.path.join(INPUT_DIR, f"img_{i}.jpg"))
 
 
@@ -26,9 +43,16 @@ def process_image(filename):
     output_path = os.path.join(OUTPUT_DIR, f"out_{filename}")
 
     with Image.open(input_path) as img:
-        img = img.rotate(-90, expand=True)          # 90 градусов по часовой стрелке
-        img = img.resize(SIZE, Image.LANCZOS)       # 800x600
-        img = img.convert("L")                      # оттенки серого
+
+        # Поворот на 90° по часовой стрелке
+        img = img.transpose(Image.Transpose.ROTATE_270)
+
+        # Изменение размера
+        img = img.resize((800, 600), Image.LANCZOS)
+
+        # Оттенки серого
+        img = img.convert("L")
+
         img.save(output_path)
 
 
@@ -46,7 +70,12 @@ def process_sequential(files):
         process_image(file)
 
     end = time.perf_counter()
-    print(f"Последовательная обработка: {end - start:.4f} секунд")
+
+    sequential_time = end - start
+
+    print(f"Последовательная обработка: {sequential_time:.4f} секунд")
+
+    return sequential_time
 
 
 def process_parallel(files):
@@ -56,18 +85,30 @@ def process_parallel(files):
         pool.map(process_image, files)
 
     end = time.perf_counter()
-    print(f"Параллельная обработка: {end - start:.4f} секунд")
+
+    parallel_time = end - start
+
+    print(f"Параллельная обработка: {parallel_time:.4f} секунд")
+
+    return parallel_time
 
 
 def main():
-    create_test_images(count=20)
+
+    print("Программа обработки изображений")
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    files = get_jpg_files()
+    clear_folder(OUTPUT_DIR)
 
-    process_sequential(files)
-    process_parallel(files)
+    create_test_images(count=10)
+
+    files = get_jpg_files()
+    sequential_time = process_sequential(files)
+    parallel_time = process_parallel(files)
+    speedup = sequential_time / parallel_time
+
+    print(f"\nУскорение: {speedup:.2f}x")
 
 
 if __name__ == "__main__":
